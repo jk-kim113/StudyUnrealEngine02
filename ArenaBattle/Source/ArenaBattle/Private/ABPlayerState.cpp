@@ -2,12 +2,16 @@
 
 #include "ABPlayerState.h"
 #include "ABGameInstance.h"
+#include "ABSaveGame.h"
 
 AABPlayerState::AABPlayerState()
 {
 	CharacterLevel = 1;
 	GameScore = 0;
+	GameHighScore = 0;
 	Exp = 0;
+	SaveSlotName = TEXT("Player1");
+	CharacterIndex = 0;
 }
 
 int32 AABPlayerState::GetGameScore() const
@@ -15,17 +19,51 @@ int32 AABPlayerState::GetGameScore() const
 	return GameScore;
 }
 
+int32 AABPlayerState::GetGameHighScore() const
+{
+	return GameHighScore;
+}
+
 int32 AABPlayerState::GetCharacterLevel() const
 {
 	return CharacterLevel;
 }
 
+int32 AABPlayerState::GetCharacterIndex() const
+{
+	return CharacterIndex;
+}
+
 void AABPlayerState::InitPlayerData()
 {
-	SetPlayerName(TEXT("Destiny"));
-	SetCharacterLevel(5);
+	auto ABSaveGame = Cast<UABSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, 0));
+	if (nullptr == ABSaveGame)
+	{
+		ABSaveGame = GetMutableDefault<UABSaveGame>();
+	}
+
+	SetPlayerName(ABSaveGame->PlayerName);
+	SetCharacterLevel(ABSaveGame->Level);
 	GameScore = 0;
-	Exp = 0;
+	GameHighScore = ABSaveGame->HighScore;
+	Exp = ABSaveGame->Exp;
+	CharacterIndex = ABSaveGame->CharacterIndex;
+	SavePlayerData();
+}
+
+void AABPlayerState::SavePlayerData()
+{
+	UABSaveGame* NewPlayerData = NewObject<UABSaveGame>();
+	NewPlayerData->PlayerName = GetPlayerName();
+	NewPlayerData->Level = CharacterLevel;
+	NewPlayerData->Exp = Exp;
+	NewPlayerData->HighScore = GameHighScore;
+	NewPlayerData->CharacterIndex = CharacterIndex;
+
+	if (!UGameplayStatics::SaveGameToSlot(NewPlayerData, SaveSlotName, 0))
+	{
+		ABLOG(Error, TEXT("SaveGame Error!"));
+	}
 }
 
 float AABPlayerState::GetExpRatio() const
@@ -53,13 +91,20 @@ bool AABPlayerState::AddExp(int32 IncomeExp)
 	}
 
 	OnPlayerStateChanged.Broadcast();
+	SavePlayerData();
 	return DidLevelUp;
 }
 
 void AABPlayerState::AddGameScore()
 {
 	GameScore++;
+	if (GameScore >= GameHighScore)
+	{
+		GameHighScore = GameScore;
+	}
+
 	OnPlayerStateChanged.Broadcast();
+	SavePlayerData();
 }
 
 void AABPlayerState::SetCharacterLevel(int32 NewCharacterLevel)
